@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initinal-scale=1.0">
+    <title>私のポートフォリオ</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #060000;
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background-color: #0074d9;
+            color: #ffffff;
+            text-align: center;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 36px;
+        }
+
+        section {
+            background-color: #fff;
+            text-align: center;
+            margin: 20px;
+            padding: 20px;
+            border-radius: 5px;
+        }
+
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        li {
+            margin-bottom: 10px;
+        }
+
+        h2 {
+            color: #0074d9;
+        }
+
+        article {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1> My'potrfolio</h1>
+        <p>一ノ瀬 直哉(いちのせ なおや)</p>
+        <ol id="table-of-contents">
+            <li><a href="#self-introduction">自己紹介</a></li>
+            <li><a href="#skills">学んだプログラミング言語</a></li>
+            <li><a href="#tools">使用したソフトウェア</a></li>
+            <li><a href="#projects">プロジェクト</a></li>
+        </ol>
+        
+        <script>
+            document.querySelectorAll('#table-of-contents a').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href').substring(1);
+                    const targetSection = document.getElementById(targetId);
+                    targetSection.scrollIntoView({ behavior: 'smooth' });
+                });
+            });
+        </script>
+        
+    </header>
+
+    <section id="self-introduction">
+        <h2>～自己紹介～</h2>
+        <ul>
+            <li>学校：大阪公立大学高等専門学校</li>
+            <li>学年：高専２年生</li>
+            <li>コース：知能情報コース</li>
+        </ul>
+
+    </section>
+
+    <section id="skills">
+        <h2>～学んだプログラミング言語～</h2>
+        <ul>
+            <li>Python:プログラミングの授業でgoogle colabを使い使用。</li>
+            <li>Arduino:マイクロコンピュータの授業で使用、配線などを学んだ。</li>
+            <li>C++:高専１年生の時、そしてマイクロコンピュータの授業で使用。</li>
+            <li>Scratch:高専１年生の時の実験実習にて使用、他に高専入学前に使用経験あり。</li>
+        </ul>
+    </section>
+
+    <section id="tools">
+        <h2>～使用したソフトウェア～</h2>
+        <ul>
+            <li>VSCode:プログラミングの授業にてダウンロードして使用。今回のポートフォリオの作成にも使用。</li>
+            <li>Git/Github:プログラミングの授業で使用。</li>
+            <li>ArduinoIDE:Arduinoを使用するために使用。</li>
+            <li>Wireshark:pingなどの接続を確認するために使用。</li>
+            <li>Tera Term:PCの接続やアドレスの設定をする時に使用。</li>
+            <li>Cisco Packet Tracer:PCの接続などの確認をするために使用。</li>
+            <li>Tinkercad:実験実習にて使用。</li>
+        </ul>
+    </section>
+
+    <section id="projects">
+        <h2>～プロジェクト～</h2>
+        <article>
+            <h3>～すごろくゲーム～</h3>
+            <h4><a href="https://colab.research.google.com/drive/1Oy9ScyAo95bc-0-scHWxwxqERDNO0xbg#scrollTo=3hbrnlgjPcf4" target="_blank">リンクはこちら</a></h4>
+            <p>・50マスの中でターン制ですごろくをします。約6時間で作成したゲーム。</p>
+        </article>
+    </section>
+
+    <section>
+        <h2>～高専祭～</h2>
+        <article>
+            <p>殲滅サバイブ</p>
+            <a href="https://unityroom.com/games/sennmetsu_survive" target="_blank">リンクはこちら</a>
+            <p>このゲームで私は主に武器やエフェクトのデザインを担当した。</p>
+            <img src="剣ex.png" alt="剣ex.png" />
+            <img src="銃3.png" alt="銃3.png" />
+            <img src="殲滅サバイブ.png" alt="殲滅サバイブ.png" />
+        </article>
+    </section>
+</body>
+</html>
