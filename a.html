@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>技術解説：PostgreSQL 17で学ぶ同時実行制御と隔離レベル</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 20px; }
+        h1 { border-bottom: 3px solid #333; padding-bottom: 10px; }
+        h2 { background: #f4f4f4; padding: 10px; border-left: 5px solid #2c3e50; }
+        h3 { color: #2c3e50; border-bottom: 1px solid #ddd; }
+        code { background: #eee; padding: 2px 5px; border-radius: 3px; font-family: 'Courier New', Courier, monospace; }
+        pre { background: #2d3436; color: #dfe6e9; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        .experiment-box { border: 2px solid #e74c3c; padding: 15px; margin: 20px 0; border-radius: 8px; }
+        .step-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        .step-table th, .step-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        .step-table th { background-color: #f9f9f9; }
+        .session-a { color: #3498db; font-weight: bold; }
+        .session-b { color: #e67e22; font-weight: bold; }
+        .note { background: #fff3cd; padding: 10px; border-radius: 5px; margin: 10px 0; border-left: 5px solid #ffc107; }
+    </style>
+</head>
+<body>
+
+<h1>PostgreSQL 17で体感する！トランザクション隔離レベルと同時実行制御</h1>
+
+<p>本記事では、RDBにおいて複数ユーザが同時にアクセスする際にデータの整合性を保つ仕組み「同時実行制御」を、実験を通して解説します。第12回までの講義内容を踏まえ、PostgreSQL 17の挙動を深く探ります。</p>
+
+<section>
+    <h2>1. 同時実行制御が必要な理由</h2>
+    <p>データベースには複数のユーザが同時にアクセスします。もし何の制御もなければ、<strong>「1つしかない在庫を2人が同時に購入できてしまう」</strong>、<strong>「振込中に残高を計算したら金額が合わない」</strong>といった不整合が発生します。</p>
+    <p>これを防ぐのが「隔離レベル（Isolation Level）」という概念です。</p>
+</section>
+
+<section>
+    <h2>2. 知っておくべき3つの異常現象 (Anomaly)</h2>
+    <p>隔離レベルを学ぶ前に、まず防ぐべき「異常」を整理します。</p>
+    <ul>
+        <li><strong>ダーティリード (Dirty Read)</strong>: 他の人がコミットしていない書き込み途中のデータを読んでしまう現象。</li>
+        <li><strong>非再現リード (Non-repeatable Read)</strong>: 同じトランザクション内で2回同じデータを読んだとき、その間に他人が更新したせいで値が変わってしまう現象。</li>
+        <li><strong>ファントムリード (Phantom Read)</strong>: 検索したとき、その間に他人が行を追加したせいで、2回目の検索で「行数」が増えてしまう現象。</li>
+    </ul>
+    
+</section>
+
+<section>
+    <h2>3. 実験環境の構築</h2>
+    <p>PostgreSQL 17 コンテナで以下のSQLを実行し、実験用の「銀行口座テーブル」を作成してください。</p>
+    <pre><code>CREATE TABLE accounts (
+    id INT PRIMARY KEY,
+    name VARCHAR(50),
+    balance INT
+);
+
+INSERT INTO accounts VALUES (1, 'Alice', 1000), (2, 'Bob', 1000);</code></pre>
+    <div class="note">
+        <strong>実験のポイント:</strong> ターミナルを2つ開き、それぞれで <code>psql</code> を実行してください。片方を <strong>Session A</strong>、もう片方を <strong>Session B</strong> とします。
+    </div>
+</section>
+
+<section>
+    <h2>4. 実験1：デフォルトレベル「Read Committed」を試す</h2>
+    <p>PostgreSQLのデフォルト設定で、<strong>Non-repeatable Read</strong> が発生することを確認します。</p>
+    
+    <table class="step-table">
+        <tr>
+            <th>Step</th>
+            <th><span class="session-a">Session A</span></th>
+            <th><span class="session-b">Session B</span></th>
+        </tr>
+        <tr>
+            <td>1</td>
+            <td><code>BEGIN;</code></td>
+            <td><code>BEGIN;</code></td>
+        </tr>
+        <tr>
+            <td>2</td>
+            <td><code>SELECT balance FROM accounts WHERE id = 1;</code><br>→ 1000</td>
+            <td>-</td>
+        </tr>
+        <tr>
+            <td>3</td>
+            <td>-</td>
+            <td><code>UPDATE accounts SET balance = 800 WHERE id = 1;</code><br><code>COMMIT;</code></td>
+        </tr>
+        <tr>
+            <td>4</td>
+            <td><strong><code>SELECT balance FROM accounts WHERE id = 1;</code></strong></td>
+            <td>-</td>
+        </tr>
+    </table>
+
+    <p><strong>検証結果:</strong> Session Aはまだ終了していないのに、2回目のSELECTでは値が <strong>800</strong> に変わってしまいます。これが「Read Committed」の仕様であり、限界です。</p>
+</section>
+
+<section>
+    <h2>5. 実験2：Repeatable Read で読み取り一貫性を守る</h2>
+    <p>隔離レベルを一段上げ、スナップショット分離を体感します。</p>
+    <pre><code>-- 事前に値を1000に戻しておく
+UPDATE accounts SET balance = 1000 WHERE id = 1;</code></pre>
+
+    <table class="step-table">
+        <tr>
+            <th>Step</th>
+            <th><span class="session-a">Session A</span></th>
+            <th><span class="session-b">Session B</span></th>
+        </tr>
+        <tr>
+            <td>1</td>
+            <td><code>BEGIN ISOLATION LEVEL <strong>REPEATABLE READ</strong>;</code></td>
+            <td><code>BEGIN;</code></td>
+        </tr>
+        <tr>
+            <td>2</td>
+            <td><code>SELECT balance FROM accounts WHERE id = 1;</code><br>→ 1000</td>
+            <td>-</td>
+        </tr>
+        <tr>
+            <td>3</td>
+            <td>-</td>
+            <td><code>UPDATE accounts SET balance = 500 WHERE id = 1;</code><br><code>COMMIT;</code></td>
+        </tr>
+        <tr>
+            <td>4</td>
+            <td><strong><code>SELECT balance FROM accounts WHERE id = 1;</code></strong></td>
+            <td>-</td>
+        </tr>
+    </table>
+
+    <p><strong>検証結果:</strong> Session Aの結果は <strong>1000</strong> のままです。PostgreSQLのMVCC（多版同時実行制御）により、トランザクション開始時点のデータが保持されていることがわかります。</p>
+</section>
+
+<section>
+    <h2>6. 実験3：Serializable による直列化エラーの再現</h2>
+    <p>最も強力な隔離レベルでは、論理的な矛盾を検知するとエラーを出して停止します。</p>
+    <div class="experiment-box">
+        <ol>
+            <li>両方のセッションで <code>BEGIN ISOLATION LEVEL SERIALIZABLE;</code> を実行。</li>
+            <li><strong>A:</strong> <code>SELECT SUM(balance) FROM accounts;</code> (2000を確認)</li>
+            <li><strong>B:</strong> <code>SELECT SUM(balance) FROM accounts;</code> (2000を確認)</li>
+            <li><strong>A:</strong> <code>INSERT INTO accounts VALUES (3, 'Charlie', 500);</code></li>
+            <li><strong>B:</strong> <code>INSERT INTO accounts VALUES (4, 'Dave', 500);</code></li>
+            <li><strong>A:</strong> <code>COMMIT;</code> → 成功</li>
+            <li><strong>B:</strong> <code>COMMIT;</code> → <strong>ERROR!</strong></li>
+        </ol>
+    </div>
+    <p>PostgreSQLが「この2つの処理を同時に確定させると、直列に実行したときと結果が矛盾する」と判断し、エラーを出しました。これがデータ整合性の最終防衛線です。</p>
+</section>
+
+<section>
+    <h2>7. 定着確認・演習ドリル</h2>
+    <h3>【Q1. 理論確認】</h3>
+    <p>PostgreSQL 17において、隔離レベルを「READ UNCOMMITTED」に設定して開始した場合、実際にはどのレベルとして動作するか答えなさい。</p>
+
+    <h3>【Q2. SQLドリル】</h3>
+    <p>以下の条件を満たす実験手順を作成し、実行しなさい。</p>
+    <blockquote>
+        「Session Aが特定の行を更新しようとしているとき、Session Bがその行を削除(DELETE)しようとした場合、どのような挙動になるか。隔離レベルが Read Committed の場合で試しなさい。」
+    </blockquote>
+</section>
+
+<section>
+    <h2>8. 解答例</h2>
+    <p><strong>Q1:</strong> <code>READ COMMITTED</code> として動作する。（PostgreSQLはDirty Readを許容しないため、下のレベルを指定しても自動的に繰り上がる）</p>
+    <p><strong>Q2:</strong> 先に実行した方のトランザクションが終了(COMMIT/ROLLBACK)するまで、後から来た方は「ロック待ち」状態で停止する。</p>
+</section>
+
+<hr>
+<p><strong>本コンテンツの作成時間：約11時間</strong></p>
+
+</body>
+</html>
